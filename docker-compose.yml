@@ -1,0 +1,59 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: resilience_postgres
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: resilience_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: resilience_redis
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+
+  target-api:
+    build:
+      context: ./target-api
+    container_name: resilience_target
+    ports:
+      - "8081:8081"
+    restart: unless-stopped
+
+  control-plane:
+    build:
+      context: ./control-plane
+    container_name: resilience_control
+    ports:
+      - "8080:8080"
+    depends_on:
+      - postgres
+      - redis
+    restart: unless-stopped
+
+  load-generator:
+    build:
+      context: ./load-generator
+    container_name: resilience_locust
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    ports:
+      - "8089:8089"
+    depends_on:
+      - redis
+      - target-api
+    command: ["locust", "-f", "locustfile.py", "--host=http://target-api:8081"]
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
