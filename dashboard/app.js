@@ -1,3 +1,12 @@
+// Determine API base URL dynamically.
+// When served by the Control Plane (port 8080) all API/WS calls are same-origin;
+// otherwise (standalone dashboard from another port or file://) target localhost:8080.
+const BASE_URL = (window.location.protocol.startsWith('http') && window.location.port === '8080')
+    ? window.location.origin
+    : 'http://localhost:8080';
+
+const TARGET_API_URL = 'http://localhost:8081';
+
 // Setup Chart.js
 const ctx = document.getElementById('metricsChart').getContext('2d');
 Chart.defaults.color = '#94a3b8';
@@ -63,29 +72,71 @@ let errorsCount = 0;
 let totalLatency = 0;
 let lastReset = Date.now();
 
-// WebSocket Connection
-const socket = new SockJS('http://localhost:8080/ws');
-const stompClient = Stomp.over(socket);
-stompClient.debug = () => {}; // Disable debug logging
+let stompClient = null;
+let wsSocket = null;
+let reconnectTimer = null;
 
-stompClient.connect({}, function (frame) {
-    connectionDot.className = 'dot connected';
-    connectionText.textContent = 'Connected to Control Plane';
+function connectWebSocket() {
+    // Cancel any pending reconnect before opening a new connection
+    if (reconnectTimer) {
+        clearTimeout(reconnectTimer);
+        reconnectTimer = null;
+    }
 
-    stompClient.subscribe('/topic/metrics', function (message) {
-        const metric = JSON.parse(message.body);
-        processMetric(metric);
-    });
-}, function(error) {
-    connectionDot.className = 'dot disconnected';
-    connectionText.textContent = 'Disconnected';
-});
+    // Tear down any stale connection first — prevents stacking duplicate
+    // SockJS clients across repeated reconnect cycles
+    try { if (stompClient) { stompClient.disconnect(function() {}); } } catch(e) {}
+    try { if (wsSocket) { wsSocket.close(); } } catch(e) {}
+    stompClient = null;
+    wsSocket = null;
+
+    try {
+        wsSocket = new SockJS(`${BASE_URL}/ws`);
+        stompClient = Stomp.over(wsSocket);
+        stompClient.debug = null; // Disable debug logs
+
+        stompClient.connect({}, function (frame) {
+            console.log("Connected to STOMP WebSocket server!");
+            connectionDot.className = 'dot connected';
+            connectionText.textContent = 'Connected to Control Plane';
+
+            stompClient.subscribe('/topic/metrics', function (message) {
+                try {
+                    let metric = JSON.parse(message.body);
+                    processMetric(metric);
+                } catch(e) {
+                    console.error("Failed to parse metric:", e);
+                }
+            });
+        }, function(error) {
+            console.error("STOMP connection error:", error);
+            connectionDot.className = 'dot disconnected';
+            connectionText.textContent = 'Disconnected (Retrying...)';
+            reconnectTimer = setTimeout(connectWebSocket, 3000);
+        });
+    } catch(e) {
+        console.error("WebSocket setup error:", e);
+        connectionDot.className = 'dot disconnected';
+        connectionText.textContent = 'Disconnected (Retrying...)';
+        reconnectTimer = setTimeout(connectWebSocket, 3000);
+    }
+}
+
+connectWebSocket();
 
 // Process incoming metrics
 function processMetric(metric) {
+    if (typeof metric === 'string') {
+        try {
+            metric = JSON.parse(metric);
+        } catch(e) {}
+    }
+    
     requestsCount++;
-    totalLatency += metric.response_time;
-    if (metric.status === 'failure' || metric.status_code >= 500) {
+    const respTime = parseFloat(metric.response_time) || 0;
+    totalLatency += respTime;
+    
+    if (metric.status === 'failure' || (metric.status_code && metric.status_code >= 500)) {
         errorsCount++;
     }
 }
@@ -95,11 +146,11 @@ setInterval(() => {
     if (requestsCount === 0) return;
 
     const now = Date.now();
-    const elapsedSec = (now - lastReset) / 1000;
+    const elapsedSec = Math.max((now - lastReset) / 1000, 0.1);
     
     const rps = Math.round(requestsCount / elapsedSec);
-    const avgLatency = Math.round(totalLatency / requestsCount);
-    const errorRate = ((errorsCount / requestsCount) * 100).toFixed(2);
+    const avgLatency = Math.round(totalLatency / Math.max(requestsCount, 1));
+    const errorRate = ((errorsCount / Math.max(requestsCount, 1)) * 100).toFixed(2);
 
     rpsValue.innerHTML = `${rps} <span class="unit">req/s</span>`;
     latencyAvgValue.innerHTML = `${avgLatency} <span class="unit">ms</span>`;
@@ -127,7 +178,7 @@ setInterval(() => {
 // API Controls
 btnStart.addEventListener('click', async () => {
     try {
-        const res = await fetch('http://localhost:8080/api/tests/start', {
+        const res = await fetch(`${BASE_URL}/api/tests/start`, {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({ name: 'UI Triggered Test', targetUsers: 100, spawnRate: 10, slaMaxP99Latency: 500, slaMaxErrorRate: 1.0 })
@@ -152,7 +203,7 @@ btnStart.addEventListener('click', async () => {
 btnStop.addEventListener('click', async () => {
     if(!currentTestId) return;
     try {
-        await fetch(`http://localhost:8080/api/tests/${currentTestId}/stop`, { method: 'POST' });
+        await fetch(`${BASE_URL}/api/tests/${currentTestId}/stop`, { method: 'POST' });
         btnStart.disabled = false;
         btnStop.disabled = true;
         isRunning = false;
@@ -161,7 +212,7 @@ btnStop.addEventListener('click', async () => {
     }
 });
 
-// Chaos Engineering Controls (direct to Target API for simplicity, assuming it's on port 8081)
+// Chaos Engineering Controls
 latencySlider.addEventListener('input', (e) => {
     const val = e.target.value;
     latencyValue.textContent = `${val} ms`;
@@ -170,7 +221,7 @@ latencySlider.addEventListener('input', (e) => {
 latencySlider.addEventListener('change', async (e) => {
     const val = e.target.value;
     try {
-        await fetch(`http://localhost:8081/api/products/chaos/delay?ms=${val}`, { method: 'POST' });
+        await fetch(`${TARGET_API_URL}/api/products/chaos/delay?ms=${val}`, { method: 'POST' });
     } catch(e) {
         console.error(e);
     }
@@ -184,7 +235,7 @@ errorSlider.addEventListener('input', (e) => {
 errorSlider.addEventListener('change', async (e) => {
     const val = e.target.value;
     try {
-        await fetch(`http://localhost:8081/api/products/chaos/errors?active=${val > 0}&ratePercent=${val}`, { method: 'POST' });
+        await fetch(`${TARGET_API_URL}/api/products/chaos/errors?active=${val > 0}&ratePercent=${val}`, { method: 'POST' });
     } catch(e) {
         console.error(e);
     }

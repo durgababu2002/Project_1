@@ -8,18 +8,28 @@ REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
 REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
 redis_client = None
 
-try:
-    redis_client = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, db=0)
-except Exception as e:
-    print(f"Failed to connect to Redis: {e}")
+def get_redis():
+    global redis_client
+    if redis_client is None:
+        try:
+            redis_client = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, db=0, socket_timeout=2.0)
+        except Exception:
+            redis_client = None
+    return redis_client
 
 @events.request.add_listener
 def on_request(request_type, name, response_time, response_length, response, context, exception, start_time, url, **kwargs):
-    if not redis_client:
+    client = get_redis()
+    if not client:
         return
         
     status = "success" if exception is None else "failure"
-    status_code = response.status_code if response else 0
+    status_code = 0
+    if exception is None and response is not None:
+        try:
+            status_code = getattr(response, 'status_code', 200) or 0
+        except Exception:
+            status_code = 0
     
     metric = {
         "timestamp": time.time(),
@@ -31,8 +41,8 @@ def on_request(request_type, name, response_time, response_length, response, con
     }
     
     try:
-        redis_client.publish("locust_metrics", json.dumps(metric))
-    except Exception as e:
+        client.publish("locust_metrics", json.dumps(metric))
+    except Exception:
         pass
 
 class MockApiUser(HttpUser):

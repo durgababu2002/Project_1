@@ -3,18 +3,20 @@ package com.example.target_api;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
 @RestController
 @RequestMapping("/api/products")
+@CrossOrigin(origins = "*")
 public class MockController {
 
-    private final List<Product> products = new ArrayList<>();
+    private final List<Product> products = new CopyOnWriteArrayList<>();
     
     // Chaos configurations
     private final AtomicInteger delayMs = new AtomicInteger(0);
@@ -79,7 +81,7 @@ public class MockController {
         if (throwErrors.get()) {
             int rate = errorRatePercent.get();
             if (rate >= 100 || Math.random() * 100 < rate) {
-                throw new RuntimeException("Chaos Engineering Error Injection!");
+                throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Chaos Engineering Error Injection");
             }
         }
     }

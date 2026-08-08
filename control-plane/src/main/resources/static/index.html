@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API Resilience Engine</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <!-- Chart.js for metrics -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- SockJS and Stomp.js for WebSockets -->
+    <script src="https://cdn.jsdelivr.net/npm/sockjs-client@1/dist/sockjs.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/stompjs@2.3.3/lib/stomp.min.js"></script>
+</head>
+<body>
+    <div class="app-container">
+        <header class="glass-panel">
+            <h1>API Resilience Engine</h1>
+            <div class="status-indicator">
+                <span class="dot disconnected" id="connectionDot"></span>
+                <span id="connectionText">Disconnected</span>
+            </div>
+        </header>
+
+        <main class="dashboard-grid">
+            <!-- Controls Panel -->
+            <section class="panel glass-panel controls">
+                <h2>Control Plane</h2>
+                
+                <div class="control-group">
+                    <h3>Load Generator</h3>
+                    <div class="btn-group">
+                        <button id="btnStart" class="btn primary">Start Load Test</button>
+                        <button id="btnStop" class="btn danger" disabled>Stop Test</button>
+                    </div>
+                </div>
+
+                <div class="control-group chaos-group">
+                    <h3>Chaos Engineering</h3>
+                    <div class="chaos-controls">
+                        <div class="chaos-item">
+                            <label>Inject DB Latency (ms)</label>
+                            <input type="range" id="latencySlider" min="0" max="2000" value="0">
+                            <span id="latencyValue">0 ms</span>
+                        </div>
+                        <div class="chaos-item">
+                            <label>Inject 500 Errors (%)</label>
+                            <input type="range" id="errorSlider" min="0" max="100" value="0">
+                            <span id="errorValue">0%</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Metrics Panel -->
+            <section class="panel glass-panel stats">
+                <h2>Real-Time Telemetry</h2>
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <h4>Throughput</h4>
+                        <div class="stat-value" id="rpsValue">0 <span class="unit">req/s</span></div>
+                    </div>
+                    <div class="stat-card">
+                        <h4>Avg Latency</h4>
+                        <div class="stat-value" id="latencyAvgValue">0 <span class="unit">ms</span></div>
+                    </div>
+                    <div class="stat-card">
+                        <h4>Error Rate</h4>
+                        <div class="stat-value error" id="errorRateValue">0.00 <span class="unit">%</span></div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Charts Panel -->
+            <section class="panel glass-panel charts">
+                <h2>Latency Distribution</h2>
+                <div class="chart-container">
+                    <canvas id="metricsChart"></canvas>
+                </div>
+            </section>
+        </main>
+    </div>
+    <script src="app.js"></script>
+</body>
+</html>
