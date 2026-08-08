@@ -1,0 +1,29 @@
+# Prometheus global configuration
+global:
+  scrape_interval: 5s      # How often to scrape targets
+  evaluation_interval: 5s  # How often to evaluate alert rules
+  scrape_timeout: 4s
+
+# Load alerting rules
+rule_files:
+  - "alerts.yml"
+
+# Scrape configuration(s)
+scrape_configs:
+  # Control Plane Spring Boot metrics via Micrometer / Actuator
+  - job_name: "control-plane"
+    metrics_path: "/actuator/prometheus"
+    static_configs:
+      - targets: ["control-plane:8080"]
+
+  # Target API Spring Boot metrics via Micrometer / Actuator
+  - job_name: "target-api"
+    metrics_path: "/actuator/prometheus"
+    static_configs:
+      - targets: ["target-api:8081"]
+
+  # Load Generator (Locust) custom Prometheus exporter
+  - job_name: "load-generator"
+    metrics_path: "/metrics"
+    static_configs:
+      - targets: ["load-generator:9189"]

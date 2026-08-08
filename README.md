@@ -67,6 +67,31 @@ While the load test is running, you can test the system's resilience by actively
 - **Inject DB Latency:** Use the slider to artificially introduce database sleep times (e.g., 300ms). Watch the latency metrics spike in real-time on the chart.
 - **Inject Errors:** Slide the error percentage up (e.g., 10%) to force the Target API to throw random `500 Internal Server Errors`. The error rate card on the dashboard will turn red, simulating a failing service level agreement (SLA).
 
+## 📈 Observability (Prometheus + Grafana)
+
+The platform ships with a full cloud-native observability stack, automatically
+provisioned and wired up by Docker Compose.
+
+| Service | URL | Purpose |
+|---------|-----|---------|
+| **Grafana** | [http://localhost:3000](http://localhost:3000) | Dashboards (login `admin` / `admin`) |
+| **Prometheus** | [http://localhost:9090](http://localhost:9090) | Metrics store, query + alerts |
+
+Metrics scraped automatically:
+- **Target API & Control Plane** → Spring Boot **Actuator + Micrometer** at
+  `/actuator/prometheus` (HTTP latency histograms, JVM, custom chaos gauges).
+- **Load Generator** → custom **Locust Prometheus exporter** at `:9189/metrics`
+  (request counters, response-time histogram, RPS, active users, failure ratio).
+
+The **"Resilience Engine Overview"** dashboard auto-loads on Grafana startup and
+includes: throughput, error rate, p50/p95/p99 latency, chaos injection state,
+Locust RPS, JVM heap, and CPU usage.
+
+Prometheus alert rules (see `monitoring/prometheus/alerts.yml`) fire on high 5xx
+error rate, high p99 latency, and high load failure ratio. The Grafana/Prometheus
+config is fully **infrastructure-as-code**: nothing is clicked-by-hand; everything
+lives under the `monitoring/` directory.
+
 ## 🔌 API Reference
 
 If you wish to interact with the services directly via Postman or Curl:
@@ -85,4 +110,4 @@ If you wish to interact with the services directly via Postman or Curl:
 ## 🤝 Future Enhancements
 - Automated rollback scripts when the SLA Validator detects a breach.
 - Distributed Locust workers across a Kubernetes cluster.
-- Prometheus/Grafana integration for long-term historical metrics.
+- Long-term historical metrics analysis (ML anomaly detection / SLA prediction).

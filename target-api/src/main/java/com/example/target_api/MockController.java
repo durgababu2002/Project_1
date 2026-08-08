@@ -1,5 +1,7 @@
 package com.example.target_api;
 
+import io.micrometer.core.instrument.Gauge;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -23,7 +25,19 @@ public class MockController {
     private final AtomicBoolean throwErrors = new AtomicBoolean(false);
     private final AtomicInteger errorRatePercent = new AtomicInteger(0);
 
-    public MockController() {
+    public MockController(MeterRegistry meterRegistry) {
+        // Register custom chaos gauges so the injected fault state is observable
+        // in Prometheus / Grafana (see monitoring/grafana dashboards).
+        Gauge.builder("chaos_injected_delay_ms", delayMs, AtomicInteger::get)
+            .description("Currently injected artificial delay in milliseconds")
+            .register(meterRegistry);
+        Gauge.builder("chaos_error_rate_percent", errorRatePercent, AtomicInteger::get)
+            .description("Currently injected error rate percentage")
+            .register(meterRegistry);
+        Gauge.builder("chaos_errors_active", throwErrors, b -> b.get() ? 1.0 : 0.0)
+            .description("Whether error injection is currently active (0/1)")
+            .register(meterRegistry);
+
         // Initialize with some dummy data
         for (int i = 0; i < 5; i++) {
             Product p = new Product();

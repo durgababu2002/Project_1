@@ -1,0 +1,39 @@
+# Alerting rules for the resilience engine (evaluated by Prometheus).
+groups:
+  - name: resilience-alerts
+    rules:
+      # High 5xx error rate on the Target API (e.g. > 5% for 30s)
+      - alert: HighTargetErrorRate
+        expr: |
+          sum(rate(http_server_requests_seconds_count{job="target-api", status=~"5.."}[1m]))
+            / clamp_min(sum(rate(http_server_requests_seconds_count{job="target-api"}[1m])), 1)
+            > 0.05
+        for: 30s
+        labels:
+          severity: critical
+        annotations:
+          summary: "Target API error rate is high"
+          description: "5xx rate is {{ $value | humanizePercentage }} over the last 1m."
+
+      # High p99 latency on the Target API (e.g. > 500ms for 1m)
+      - alert: HighTargetLatencyP99
+        expr: |
+          histogram_quantile(0.99,
+            sum(rate(http_server_requests_seconds_bucket{job="target-api"}[1m])) by (le))
+            > 0.5
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Target API p99 latency is high"
+          description: "p99 latency is {{ $value | humanizeDuration }} over the last 1m."
+
+      # Locust failure ratio above threshold
+      - alert: HighLoadFailureRatio
+        expr: locust_failure_ratio > 0.05
+        for: 30s
+        labels:
+          severity: warning
+        annotations:
+          summary: "Load generator failure ratio is high"
+          description: "Failure ratio is {{ $value | humanizePercentage }}."
