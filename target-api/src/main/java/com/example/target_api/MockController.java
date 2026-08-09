@@ -1,43 +1,30 @@
 package com.example.target_api;
 
-import io.micrometer.core.instrument.Gauge;
-import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
 
+/**
+ * Mock target microservice with Week 3 fault-injection capabilities. All chaos
+ * state lives in {@link ChaosService} (time-boxed, self-recovering, scoped);
+ * this controller only wires HTTP access to it.
+ */
 @RestController
 @RequestMapping("/api/products")
 @CrossOrigin(origins = "*")
 public class MockController {
 
     private final List<Product> products = new CopyOnWriteArrayList<>();
-    
-    // Chaos configurations
-    private final AtomicInteger delayMs = new AtomicInteger(0);
-    private final AtomicBoolean throwErrors = new AtomicBoolean(false);
-    private final AtomicInteger errorRatePercent = new AtomicInteger(0);
+    private final ChaosService chaosService;
 
-    public MockController(MeterRegistry meterRegistry) {
-        // Register custom chaos gauges so the injected fault state is observable
-        // in Prometheus / Grafana (see monitoring/grafana dashboards).
-        Gauge.builder("chaos_injected_delay_ms", delayMs, AtomicInteger::get)
-            .description("Currently injected artificial delay in milliseconds")
-            .register(meterRegistry);
-        Gauge.builder("chaos_error_rate_percent", errorRatePercent, AtomicInteger::get)
-            .description("Currently injected error rate percentage")
-            .register(meterRegistry);
-        Gauge.builder("chaos_errors_active", throwErrors, b -> b.get() ? 1.0 : 0.0)
-            .description("Whether error injection is currently active (0/1)")
-            .register(meterRegistry);
-
+    public MockController(ChaosService chaosService) {
+        this.chaosService = chaosService;
         // Initialize with some dummy data
         for (int i = 0; i < 5; i++) {
             Product p = new Product();
@@ -50,13 +37,13 @@ public class MockController {
 
     @GetMapping
     public ResponseEntity<List<Product>> getProducts() throws InterruptedException {
-        applyChaos();
+        chaosService.applyChaos("GET");
         return ResponseEntity.ok(products);
     }
 
     @PostMapping
     public ResponseEntity<Product> createProduct(@RequestBody Product product) throws InterruptedException {
-        applyChaos();
+        chaosService.applyChaos("POST");
         product.setId(UUID.randomUUID().toString());
         products.add(product);
         return ResponseEntity.status(HttpStatus.CREATED).body(product);
@@ -64,7 +51,7 @@ public class MockController {
 
     @GetMapping("/{id}")
     public ResponseEntity<Product> getProduct(@PathVariable String id) throws InterruptedException {
-        applyChaos();
+        chaosService.applyChaos("GET");
         return products.stream()
                 .filter(p -> p.getId().equals(id))
                 .findFirst()
@@ -72,40 +59,64 @@ public class MockController {
                 .orElse(ResponseEntity.notFound().build());
     }
 
-    // Chaos configuration endpoints
+    // ------------------------------------------------------------------
+    // Week 3: on-demand chaos experiment API
+    // ------------------------------------------------------------------
+
+    /** Launch a time-boxed fault from the experiment library. */
+    @PostMapping("/chaos/experiment")
+    public ResponseEntity<Map<String, Object>> runExperiment(@RequestBody ChaosSpec spec) {
+        try {
+            return ResponseEntity.ok(chaosService.inject(spec));
+        } catch (IllegalArgumentException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
+        }
+    }
+
+    /** Observability snapshot of the currently active faults. */
+    @GetMapping("/chaos/status")
+    public ResponseEntity<Map<String, Object>> chaosStatus() {
+        return ResponseEntity.ok(chaosService.status());
+    }
+
+    // ------------------------------------------------------------------
+    // Legacy Week 1/2 direct endpoints (kept for dashboard sliders + SLA rollback)
+    // ------------------------------------------------------------------
+
     @PostMapping("/chaos/delay")
     public ResponseEntity<String> setDelay(@RequestParam int ms) {
-        delayMs.set(ms);
+        if (ms <= 0) {
+            chaosService.clearType(ChaosService.NETWORK_LATENCY);
+            return ResponseEntity.ok("Delay cleared");
+        }
+        ChaosSpec spec = new ChaosSpec();
+        spec.setType(ChaosService.NETWORK_LATENCY);
+        spec.setDurationSeconds(86_400); // persistent until reset, like before
+        spec.setScope("ALL");
+        spec.setDelayMs(ms);
+        chaosService.inject(spec);
         return ResponseEntity.ok("Delay set to " + ms + "ms");
     }
 
     @PostMapping("/chaos/errors")
     public ResponseEntity<String> setErrors(@RequestParam boolean active, @RequestParam(defaultValue = "100") int ratePercent) {
-        throwErrors.set(active);
-        errorRatePercent.set(ratePercent);
+        if (!active || ratePercent <= 0) {
+            chaosService.clearType(ChaosService.HTTP_5XX);
+            return ResponseEntity.ok("Errors cleared");
+        }
+        ChaosSpec spec = new ChaosSpec();
+        spec.setType(ChaosService.HTTP_5XX);
+        spec.setDurationSeconds(86_400); // persistent until reset, like before
+        spec.setScope("ALL");
+        spec.setErrorRatePercent(ratePercent);
+        chaosService.inject(spec);
         return ResponseEntity.ok("Errors active: " + active + ", rate: " + ratePercent + "%");
     }
 
     @PostMapping("/chaos/reset")
     public ResponseEntity<String> resetChaos() {
-        delayMs.set(0);
-        throwErrors.set(false);
-        errorRatePercent.set(0);
+        chaosService.reset();
         return ResponseEntity.ok("Chaos injection reset");
-    }
-
-    private void applyChaos() throws InterruptedException {
-        int currentDelay = delayMs.get();
-        if (currentDelay > 0) {
-            Thread.sleep(currentDelay);
-        }
-
-        if (throwErrors.get()) {
-            int rate = errorRatePercent.get();
-            if (rate >= 100 || Math.random() * 100 < rate) {
-                throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Chaos Engineering Error Injection");
-            }
-        }
     }
 
     public static class Product {

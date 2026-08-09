@@ -62,7 +62,7 @@ graph TD
 ## ✅ Ground Rules for Implementation
 
 - **One week at a time.** Review plan → implement → verify → commit before moving on.
-- Follow existing conventions: Spring Boot 3.2 / Java 17 / Gradle, Locust + Python,
+- Follow existing conventions: Spring Boot 4.0 / Java 26 / Gradle 9.7, Locust + Python,
   vanilla JS + Chart.js dashboard.
 - Every milestone must be verifiable (builds/tests run where possible) and
   standalone-demoable.

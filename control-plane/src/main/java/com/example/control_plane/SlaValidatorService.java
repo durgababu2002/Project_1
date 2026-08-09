@@ -47,6 +47,9 @@ public class SlaValidatorService {
     @Autowired
     private SimpMessagingTemplate messagingTemplate;
 
+    @Autowired
+    private ChaosExperimentService chaosExperimentService;
+
     private final RestTemplate restTemplate = new RestTemplate();
 
     private final String locustHost;
@@ -121,6 +124,9 @@ public class SlaValidatorService {
 
         stopLocust(test);
         rollbackChaos(test);
+        // Week 3: also stop every running chaos experiment (game days count too).
+        int rolledBackExperiments = chaosExperimentService.rollbackAllRunning(
+                "SLA_BREACH auto-remediation for test " + test.getId());
         webhookAlertService.sendBreachAlert(test.getId(), test.getName(), reason, metrics, now);
 
         Map<String, Object> alert = new HashMap<>();
@@ -130,6 +136,7 @@ public class SlaValidatorService {
         alert.put("reason", reason);
         alert.put("timestamp", now);
         alert.put("actions", List.of(ACTION_AUTO_STOP, ACTION_ROLLBACK, ACTION_WEBHOOK));
+        alert.put("chaosExperimentsStopped", rolledBackExperiments);
         alert.put("metrics", Map.of(
                 "p50", metrics.getP50(),
                 "p95", metrics.getP95(),
@@ -138,7 +145,7 @@ public class SlaValidatorService {
                 "max", metrics.getMax(),
                 "avg", metrics.getAvg(),
                 "errorRate", metrics.getErrorRate()));
-        messagingTemplate.convertAndSend("/topic/alerts", alert);
+        messagingTemplate.convertAndSend("/topic/alerts", (Object) alert);
 
         System.out.println("[SLA] Test " + test.getId() + " breached: " + reason);
     }
