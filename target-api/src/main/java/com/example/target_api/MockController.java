@@ -86,6 +86,14 @@ public class MockController {
         return ResponseEntity.ok("Errors active: " + active + ", rate: " + ratePercent + "%");
     }
 
+    @PostMapping("/chaos/reset")
+    public ResponseEntity<String> resetChaos() {
+        delayMs.set(0);
+        throwErrors.set(false);
+        errorRatePercent.set(0);
+        return ResponseEntity.ok("Chaos injection reset");
+    }
+
     private void applyChaos() throws InterruptedException {
         int currentDelay = delayMs.get();
         if (currentDelay > 0) {

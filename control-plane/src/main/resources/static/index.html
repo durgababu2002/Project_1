@@ -22,6 +22,17 @@
             </div>
         </header>
 
+        <!-- SLA breach alert banner (pushed live over /topic/alerts) -->
+        <div id="alertBanner" class="alert-banner hidden">
+            <div class="alert-icon">⚠️</div>
+            <div class="alert-content">
+                <h3>SLA Breach Detected</h3>
+                <p id="alertReason"></p>
+                <span id="alertActions" class="alert-actions"></span>
+            </div>
+            <button class="btn dismiss" id="alertDismiss" title="Dismiss">×</button>
+        </div>
+
         <main class="dashboard-grid">
             <!-- Controls Panel -->
             <section class="panel glass-panel controls">
@@ -33,6 +44,21 @@
                         <button id="btnStart" class="btn primary">Start Load Test</button>
                         <button id="btnStop" class="btn danger" disabled>Stop Test</button>
                     </div>
+                </div>
+
+                <div class="control-group sla-config">
+                    <h3>SLA Policy (checked every 5s)</h3>
+                    <div class="sla-inputs">
+                        <label>
+                            <span>Max p99 Latency (ms)</span>
+                            <input type="number" id="slaLimitP99Input" value="500" min="0" step="10">
+                        </label>
+                        <label>
+                            <span>Max Error Rate (%)</span>
+                            <input type="number" id="slaLimitErrInput" value="1" min="0" step="0.5">
+                        </label>
+                    </div>
+                    <p class="hint">On breach: auto-stop load · rollback chaos · webhook alert</p>
                 </div>
 
                 <div class="control-group chaos-group">
@@ -68,6 +94,41 @@
                         <h4>Error Rate</h4>
                         <div class="stat-value error" id="errorRateValue">0.00 <span class="unit">%</span></div>
                     </div>
+                </div>
+            </section>
+
+            <!-- SLA Engine Panel (percentiles from real Redis aggregates) -->
+            <section class="panel glass-panel sla">
+                <h2>Real-Time SLA Engine</h2>
+                <p class="panel-subtitle">p50 / p95 / p99 / min / max from Redis aggregates (nearest-rank)</p>
+                <div class="sla-grid">
+                    <div class="sla-card">
+                        <h4>p50</h4>
+                        <div class="stat-value" id="slaP50">— <span class="unit">ms</span></div>
+                    </div>
+                    <div class="sla-card">
+                        <h4>p95</h4>
+                        <div class="stat-value" id="slaP95">— <span class="unit">ms</span></div>
+                    </div>
+                    <div class="sla-card">
+                        <h4>p99</h4>
+                        <div class="stat-value" id="slaP99">— <span class="unit">ms</span></div>
+                    </div>
+                    <div class="sla-card">
+                        <h4>min</h4>
+                        <div class="stat-value" id="slaMin">— <span class="unit">ms</span></div>
+                    </div>
+                    <div class="sla-card">
+                        <h4>max</h4>
+                        <div class="stat-value" id="slaMax">— <span class="unit">ms</span></div>
+                    </div>
+                    <div class="sla-card">
+                        <h4>Error Rate</h4>
+                        <div class="stat-value" id="slaErrRate">0.00 <span class="unit">%</span></div>
+                    </div>
+                </div>
+                <div class="sla-limits">
+                    <span>Samples in window: <b id="slaSamples">0</b> · SLA: p99 ≤ <b id="slaLimitP99">500</b> ms · errors ≤ <b id="slaLimitErr">1</b>%</span>
                 </div>
             </section>
 

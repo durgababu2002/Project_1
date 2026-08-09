@@ -108,6 +108,16 @@ function connectWebSocket() {
                     console.error("Failed to parse metric:", e);
                 }
             });
+
+            // Week 2: live SLA breach notifications from the validator
+            stompClient.subscribe('/topic/alerts', function (message) {
+                try {
+                    const alert = JSON.parse(message.body);
+                    showSlaAlert(alert);
+                } catch(e) {
+                    console.error("Failed to parse alert:", e);
+                }
+            });
         }, function(error) {
             console.error("STOMP connection error:", error);
             connectionDot.className = 'dot disconnected';
@@ -142,8 +152,14 @@ function processMetric(metric) {
 }
 
 // Update UI every second
+let isZeroed = false;
 setInterval(() => {
-    if (requestsCount === 0) return;
+    if (requestsCount === 0) {
+        if (isZeroed) return;
+        isZeroed = true;
+    } else {
+        isZeroed = false;
+    }
 
     const now = Date.now();
     const elapsedSec = Math.max((now - lastReset) / 1000, 0.1);
@@ -175,13 +191,62 @@ setInterval(() => {
 
 }, 1000);
 
+// SLA engine: read the currently configured policy into the panel
+function updateSlaLimits() {
+    const p99 = parseFloat(document.getElementById('slaLimitP99Input').value) || 500;
+    const err = parseFloat(document.getElementById('slaLimitErrInput').value) || 1;
+    document.getElementById('slaLimitP99').textContent = p99;
+    document.getElementById('slaLimitErr').textContent = err;
+    return { p99, err };
+}
+updateSlaLimits();
+
+// SLA engine: poll true percentiles computed from Redis aggregates
+async function refreshSlaStatus() {
+    try {
+        const res = await fetch(`${BASE_URL}/api/sla/status`);
+        if (!res.ok) return;
+        const data = await res.json();
+        const ms = (v) => `${Math.round(v * 10) / 10} <span class="unit">ms</span>`;
+        document.getElementById('slaP50').innerHTML = ms(data.p50);
+        document.getElementById('slaP95').innerHTML = ms(data.p95);
+        document.getElementById('slaP99').innerHTML = ms(data.p99);
+        document.getElementById('slaMin').innerHTML = ms(data.min);
+        document.getElementById('slaMax').innerHTML = ms(data.max);
+        document.getElementById('slaErrRate').innerHTML = `${(data.error_rate * 100).toFixed(2)} <span class="unit">%</span>`;
+        document.getElementById('slaSamples').textContent = data.sample_count;
+    } catch(e) {
+        // Control Plane not reachable yet; keep last rendered values.
+    }
+}
+setInterval(refreshSlaStatus, 2000);
+
+// SLA engine: breach banner pushed over /topic/alerts
+function showSlaAlert(alert) {
+    document.getElementById('alertReason').textContent = alert.reason || 'SLA limits exceeded';
+    document.getElementById('alertActions').textContent =
+        'Auto-remediation: ' + (alert.actions || []).join(' · ');
+    document.getElementById('alertBanner').classList.remove('hidden');
+    // The validator already stopped the load & rolled back chaos server-side.
+    if (isRunning) {
+        btnStart.disabled = false;
+        btnStop.disabled = true;
+        isRunning = false;
+    }
+}
+
+document.getElementById('alertDismiss').addEventListener('click', () => {
+    document.getElementById('alertBanner').classList.add('hidden');
+});
+
 // API Controls
 btnStart.addEventListener('click', async () => {
     try {
+        const sla = updateSlaLimits();
         const res = await fetch(`${BASE_URL}/api/tests/start`, {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ name: 'UI Triggered Test', targetUsers: 100, spawnRate: 10, slaMaxP99Latency: 500, slaMaxErrorRate: 1.0 })
+            body: JSON.stringify({ name: 'UI Triggered Test', targetUsers: 100, spawnRate: 10, slaMaxP99Latency: sla.p99, slaMaxErrorRate: sla.err })
         });
         const data = await res.json();
         currentTestId = data.id;

@@ -17,6 +17,8 @@ public class LoadTest {
     private int spawnRate;
     private double slaMaxP99Latency;
     private double slaMaxErrorRate;
+    private String breachReason;
+    private Long startedAt;
 
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
@@ -32,4 +34,8 @@ public class LoadTest {
     public void setSlaMaxP99Latency(double slaMaxP99Latency) { this.slaMaxP99Latency = slaMaxP99Latency; }
     public double getSlaMaxErrorRate() { return slaMaxErrorRate; }
     public void setSlaMaxErrorRate(double slaMaxErrorRate) { this.slaMaxErrorRate = slaMaxErrorRate; }
+    public String getBreachReason() { return breachReason; }
+    public void setBreachReason(String breachReason) { this.breachReason = breachReason; }
+    public Long getStartedAt() { return startedAt; }
+    public void setStartedAt(Long startedAt) { this.startedAt = startedAt; }
 }

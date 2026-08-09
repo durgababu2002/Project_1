@@ -33,6 +33,8 @@ public class LoadTestController {
     @PostMapping("/start")
     public ResponseEntity<LoadTest> startTest(@RequestBody LoadTest testConfig) {
         testConfig.setStatus("RUNNING");
+        testConfig.setStartedAt(System.currentTimeMillis());
+        testConfig.setBreachReason(null);
         LoadTest saved = loadTestRepository.save(testConfig);
         
         // Trigger Locust swarm via REST API

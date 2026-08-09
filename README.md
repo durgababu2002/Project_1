@@ -92,6 +92,25 @@ error rate, high p99 latency, and high load failure ratio. The Grafana/Prometheu
 config is fully **infrastructure-as-code**: nothing is clicked-by-hand; everything
 lives under the `monitoring/` directory.
 
+## 🛡️ SLA Engine (Auto-Remediation)
+
+The Control Plane now evaluates every running load test against a **real SLA
+policy** computed from the live latency distribution (no mock values):
+
+- **Real percentiles:** the load generator publishes raw response-time samples to
+  Redis every 2s; the Control Plane keeps a 30s sliding window and computes
+  **p50 / p95 / p99 / min / max / error-rate** with nearest-rank math
+  (`/api/sla/status`).
+- **Editable policy:** set max p99 latency + max error rate before starting a test
+  from the dashboard (persisted with the test).
+- **On breach, automatically:** marks the test `FAILED_SLA` → **stops the Locust
+  swarm** → **rolls back injected chaos** on the Target API → fires a **webhook
+  alert** (`SLA_WEBHOOK_URL`, e.g. Slack/Teams/PagerDuty/n8n) → pushes a live
+  breach banner to every dashboard over `/topic/alerts`.
+- **Verified by JUnit + Testcontainers**: percentile math, sliding-window expiry,
+  Redis aggregate ingestion, and the SLA decision logic are all covered by the
+  `control-plane` test suite.
+
 ## 🔌 API Reference
 
 If you wish to interact with the services directly via Postman or Curl:
@@ -108,6 +127,6 @@ If you wish to interact with the services directly via Postman or Curl:
 - `POST /api/tests/{id}/stop` - Mark a test as completed.
 
 ## 🤝 Future Enhancements
-- Automated rollback scripts when the SLA Validator detects a breach.
 - Distributed Locust workers across a Kubernetes cluster.
 - Long-term historical metrics analysis (ML anomaly detection / SLA prediction).
+- ChatOps: natural-language commands to run tests and read SLA reports (Week 6).

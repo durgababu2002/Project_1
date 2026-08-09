@@ -7,6 +7,14 @@ plugins {
 group = 'com.example'
 version = '0.0.1-SNAPSHOT'
 
+ext {
+	// Docker Desktop evolves faster than the Testcontainers version pinned by
+	// Boot 3.2.5 (1.19.x). Newer engines (Docker 29.x, API >= 1.40) return HTTP
+	// 400 to docker-java 3.3.x over the named pipe, so bump the whole
+	// Testcontainers BOM to a release that negotiates modern engine APIs.
+	set('testcontainers.version', '1.21.3')
+}
+
 java {
 	toolchain {
 		languageVersion = JavaLanguageVersion.of(17)
@@ -26,6 +34,10 @@ dependencies {
 	runtimeOnly 'io.micrometer:micrometer-registry-prometheus'
 	runtimeOnly 'org.postgresql:postgresql'
 	testImplementation 'org.springframework.boot:spring-boot-starter-test'
+	testImplementation 'org.springframework.boot:spring-boot-testcontainers'
+	testImplementation 'org.testcontainers:junit-jupiter'
+	testImplementation 'org.testcontainers:testcontainers'
+	testImplementation 'org.testcontainers:postgresql'
 	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
 

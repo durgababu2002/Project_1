@@ -80,5 +80,21 @@ graph TD
   - [x] Verified live: all 3 Prometheus targets `up`, locust metrics scraped, chaos gauges
         reflected instantly, dashboard auto-loaded (see dev logs)
 
+- **Week 2 — Real SLA Engine: 🟢 DONE**
+  - [x] True p50/p95/p99/min/max **nearest-rank** percentile math over a 30s sliding
+        window of raw latency samples streamed from Redis aggregates
+        (`AggregateWindow`, `AggregatedMetrics`, `RedisAggregateListener`)
+  - [x] Load generator publishes periodic `locust_aggregates` batches (ms timestamps +
+        per-flush-interval error counts) that replace the previous mock values
+  - [x] Auto-stop of the Locust swarm on SLA breach
+  - [x] Auto-rollback of injected chaos on the Target API on breach
+  - [x] Webhook alerts (Slack/Teams/PagerDuty/n8n) on breach via `WebhookAlertService`
+        (`SLA_WEBHOOK_URL` env; disabled when empty)
+  - [x] Live `/topic/alerts` breach banner + editable SLA policy + `/api/sla/status`
+        percentile panel on the dashboard
+  - [x] JUnit + Testcontainers tests (percentile math, sliding-window expiry,
+        Redis aggregate ingestion end-to-end, SLA decision logic, full Spring
+        context with Postgres + Redis) — all green
+
 ---
 *Status legend: ⬜ not started · 🔄 in progress · ✅ done*
