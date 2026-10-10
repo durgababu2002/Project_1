@@ -51,6 +51,15 @@ class SlaValidatorServiceTest {
         assertThat(validator.evaluate(test, rangeMetrics(1, 100))).isNull();
     }
 
+    @Test
+    void unconfiguredOrZeroSlaDoesNotTriggerBreach() {
+        test.setSlaMaxP99Latency(0.0);
+        test.setSlaMaxErrorRate(0.0);
+        AggregatedMetrics highLatencyAndErrors = AggregatedMetrics.fromSamples(
+                Arrays.asList(1000L, 2000L, 3000L), 10, 13, 0L);
+        assertThat(validator.evaluate(test, highLatencyAndErrors)).isNull();
+    }
+
     private AggregatedMetrics rangeMetrics(int from, int to) {
         Long[] latencies = new Long[to - from + 1];
         for (int i = from; i <= to; i++) {

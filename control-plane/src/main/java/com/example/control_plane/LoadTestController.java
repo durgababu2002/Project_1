@@ -1,6 +1,7 @@
 package com.example.control_plane;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -20,10 +21,16 @@ public class LoadTestController {
     @Autowired
     private LoadTestRepository loadTestRepository;
 
+    @Autowired
+    private AggregateWindow aggregateWindow;
+
     private final RestTemplate restTemplate = new RestTemplate();
-    // LOCUST_HOST points at the Locust web UI. Inside Docker Compose it must be
-    // "http://load-generator:8089"; locally it falls back to localhost.
-    private final String locustHost = System.getenv().getOrDefault("LOCUST_HOST", "http://localhost:8089");
+
+    @Value("${locust.host:http://localhost:8089}")
+    private String locustHost;
+
+    @Value("${target-api.url:http://localhost:8081}")
+    private String targetApiUrl;
 
     @GetMapping
     public List<LoadTest> getAllTests() {
@@ -32,6 +39,9 @@ public class LoadTestController {
 
     @PostMapping("/start")
     public ResponseEntity<LoadTest> startTest(@RequestBody LoadTest testConfig) {
+        // Clear previous test residuals from sliding window so old metrics don't pollute this run
+        aggregateWindow.clear();
+
         testConfig.setStatus("RUNNING");
         testConfig.setStartedAt(System.currentTimeMillis());
         testConfig.setBreachReason(null);
@@ -45,7 +55,7 @@ public class LoadTestController {
             MultiValueMap<String, String> map = new LinkedMultiValueMap<>();
             map.add("user_count", String.valueOf(testConfig.getTargetUsers() > 0 ? testConfig.getTargetUsers() : 10));
             map.add("spawn_rate", String.valueOf(testConfig.getSpawnRate() > 0 ? testConfig.getSpawnRate() : 2));
-            map.add("host", "http://target-api:8081");
+            map.add("host", targetApiUrl);
 
             HttpEntity<MultiValueMap<String, String>> request = new HttpEntity<>(map, headers);
             restTemplate.postForEntity(locustHost + "/swarm", request, String.class);
@@ -60,7 +70,10 @@ public class LoadTestController {
     @PostMapping("/{id}/stop")
     public ResponseEntity<LoadTest> stopTest(@PathVariable Long id) {
         return loadTestRepository.findById(id).map(test -> {
-            test.setStatus("COMPLETED");
+            // Preserve FAILED_SLA status if already breached
+            if (!"FAILED_SLA".equals(test.getStatus())) {
+                test.setStatus("COMPLETED");
+            }
             LoadTest saved = loadTestRepository.save(test);
             
             // Stop Locust swarm via REST API

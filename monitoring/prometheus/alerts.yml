@@ -6,7 +6,7 @@ groups:
       - alert: HighTargetErrorRate
         expr: |
           sum(rate(http_server_requests_seconds_count{job="target-api", status=~"5.."}[1m]))
-            / clamp_min(sum(rate(http_server_requests_seconds_count{job="target-api"}[1m])), 1)
+            / clamp_min(sum(rate(http_server_requests_seconds_count{job="target-api"}[1m])), 0.001)
             > 0.05
         for: 30s
         labels:

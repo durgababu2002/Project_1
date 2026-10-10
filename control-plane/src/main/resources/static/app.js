@@ -1,11 +1,14 @@
-// Determine API base URL dynamically.
-// When served by the Control Plane (port 8080) all API/WS calls are same-origin;
-// otherwise (standalone dashboard from another port or file://) target localhost:8080.
+// Determine API base URLs dynamically so the dashboard works out of the box
+// on localhost, file://, or accessed remotely via LAN IP / server hostname.
+const HOSTNAME = (window.location.protocol.startsWith('http') && window.location.hostname)
+    ? window.location.hostname
+    : 'localhost';
+
 const BASE_URL = (window.location.protocol.startsWith('http') && window.location.port === '8080')
     ? window.location.origin
-    : 'http://localhost:8080';
+    : `${window.location.protocol.startsWith('http') ? window.location.protocol : 'http:'}//${HOSTNAME}:8080`;
 
-const TARGET_API_URL = 'http://localhost:8081';
+const TARGET_API_URL = `${window.location.protocol.startsWith('http') ? window.location.protocol : 'http:'}//${HOSTNAME}:8081`;
 
 // Setup Chart.js
 const ctx = document.getElementById('metricsChart').getContext('2d');
@@ -75,6 +78,7 @@ let lastReset = Date.now();
 let stompClient = null;
 let wsSocket = null;
 let reconnectTimer = null;
+let useNativeWs = (window.location.protocol === 'file:');
 
 function connectWebSocket() {
     // Cancel any pending reconnect before opening a new connection
@@ -84,14 +88,20 @@ function connectWebSocket() {
     }
 
     // Tear down any stale connection first — prevents stacking duplicate
-    // SockJS clients across repeated reconnect cycles
+    // SockJS/WebSocket clients across repeated reconnect cycles
     try { if (stompClient) { stompClient.disconnect(function() {}); } } catch(e) {}
     try { if (wsSocket) { wsSocket.close(); } } catch(e) {}
     stompClient = null;
     wsSocket = null;
 
     try {
-        wsSocket = new SockJS(`${BASE_URL}/ws`);
+        if (useNativeWs) {
+            const wsProto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            wsSocket = new WebSocket(`${wsProto}//${HOSTNAME}:8080/ws`);
+        } else {
+            wsSocket = new SockJS(`${BASE_URL}/ws`);
+        }
+
         stompClient = Stomp.over(wsSocket);
         stompClient.debug = null; // Disable debug logs
 
@@ -120,12 +130,19 @@ function connectWebSocket() {
             });
         }, function(error) {
             console.error("STOMP connection error:", error);
+            if (!useNativeWs) {
+                console.log("SockJS connection failed, attempting native WebSocket fallback...");
+                useNativeWs = true;
+            }
             connectionDot.className = 'dot disconnected';
             connectionText.textContent = 'Disconnected (Retrying...)';
             reconnectTimer = setTimeout(connectWebSocket, 3000);
         });
     } catch(e) {
         console.error("WebSocket setup error:", e);
+        if (!useNativeWs) {
+            useNativeWs = true;
+        }
         connectionDot.className = 'dot disconnected';
         connectionText.textContent = 'Disconnected (Retrying...)';
         reconnectTimer = setTimeout(connectWebSocket, 3000);
@@ -155,7 +172,10 @@ function processMetric(metric) {
 let isZeroed = false;
 setInterval(() => {
     if (requestsCount === 0) {
-        if (isZeroed) return;
+        if (isZeroed) {
+            lastReset = Date.now();
+            return;
+        }
         isZeroed = true;
     } else {
         isZeroed = false;
@@ -233,6 +253,11 @@ function showSlaAlert(alert) {
         btnStop.disabled = true;
         isRunning = false;
     }
+    // Synchronize UI sliders with the server-side auto-rollback
+    latencySlider.value = 0;
+    latencyValue.textContent = '0 ms';
+    errorSlider.value = 0;
+    errorValue.textContent = '0%';
 }
 
 document.getElementById('alertDismiss').addEventListener('click', () => {
@@ -254,6 +279,14 @@ btnStart.addEventListener('click', async () => {
         btnStart.disabled = true;
         btnStop.disabled = false;
         isRunning = true;
+
+        // Dismiss alert banner and reset telemetry counters
+        document.getElementById('alertBanner').classList.add('hidden');
+        requestsCount = 0;
+        errorsCount = 0;
+        totalLatency = 0;
+        lastReset = Date.now();
+        isZeroed = false;
 
         // Clear chart
         metricsChart.data.labels = [];

@@ -1,5 +1,6 @@
 package com.example.control_plane;
 
+import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -15,8 +16,13 @@ public class LoadTest {
     private String status; // PENDING, RUNNING, COMPLETED, FAILED_SLA
     private int targetUsers;
     private int spawnRate;
+    
+    @Column(name = "sla_max_p99_latency")
     private double slaMaxP99Latency;
+    
+    @Column(name = "sla_max_error_rate")
     private double slaMaxErrorRate;
+    
     private String breachReason;
     private Long startedAt;
 

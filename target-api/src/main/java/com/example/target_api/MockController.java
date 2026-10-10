@@ -20,6 +20,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 @CrossOrigin(origins = "*")
 public class MockController {
 
+    private static final int MAX_PRODUCTS = 100;
     private final List<Product> products = new CopyOnWriteArrayList<>();
     private final ChaosService chaosService;
 
@@ -45,6 +46,9 @@ public class MockController {
     public ResponseEntity<Product> createProduct(@RequestBody Product product) throws InterruptedException {
         chaosService.applyChaos("POST");
         product.setId(UUID.randomUUID().toString());
+        while (products.size() >= MAX_PRODUCTS) {
+            products.remove(0);
+        }
         products.add(product);
         return ResponseEntity.status(HttpStatus.CREATED).body(product);
     }

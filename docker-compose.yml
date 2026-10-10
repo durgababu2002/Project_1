@@ -52,6 +52,7 @@ services:
       - PROM_PORT=9189
     ports:
       - "8089:8089"
+      - "9189:9189"
     depends_on:
       - redis
       - target-api

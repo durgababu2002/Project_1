@@ -45,9 +45,9 @@ public class WebhookAlertService {
 
             Map<String, Object> payload = Map.of(
                     "event", "SLA_BREACH",
-                    "test_id", testId,
-                    "test_name", testName,
-                    "reason", reason,
+                    "test_id", testId != null ? testId : 0L,
+                    "test_name", testName != null ? testName : "unnamed",
+                    "reason", reason != null ? reason : "SLA breach",
                     "breached_at", breachedAt,
                     "metrics", Map.of(
                             "p50", metrics.getP50(),

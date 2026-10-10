@@ -32,6 +32,7 @@ public class AggregateWindow {
     private final List<Sample> samples = new ArrayList<>();
     private final List<Batch> batches = new ArrayList<>();
     private final long windowMs;
+    private long latestTimestamp = 0;
 
     public AggregateWindow() {
         this(30_000L);
@@ -45,6 +46,7 @@ public class AggregateWindow {
     public synchronized void addBatch(List<Long> latencies, long batchErrorCount,
                                       long batchTotalRequests, long now) {
         long current = now > 0 ? now : System.currentTimeMillis();
+        this.latestTimestamp = Math.max(this.latestTimestamp, current);
         if (batchErrorCount > 0 || batchTotalRequests > 0) {
             batches.add(new Batch(current, batchErrorCount, batchTotalRequests));
         }
@@ -76,8 +78,33 @@ public class AggregateWindow {
         }
     }
 
+    /** Clears all samples and batches from the sliding window. */
+    public synchronized void clear() {
+        samples.clear();
+        batches.clear();
+        latestTimestamp = 0;
+    }
+
+    private long determineNow() {
+        // If timestamps in window are real epoch milliseconds (year 2000+),
+        // evict against current wall-clock time so inactivity decays window.
+        // Otherwise use latestTimestamp for synthetic test fixtures.
+        if (latestTimestamp > 10_000_000_000L) {
+            return System.currentTimeMillis();
+        }
+        return latestTimestamp;
+    }
+
     /** Computes percentile statistics over the current window contents. */
     public synchronized AggregatedMetrics aggregate() {
+        return aggregate(determineNow());
+    }
+
+    /** Computes percentile statistics over the window contents relative to a specific time. */
+    public synchronized AggregatedMetrics aggregate(long now) {
+        if (now > 0) {
+            evict(now);
+        }
         List<Long> latencies = new ArrayList<>(samples.size());
         for (Sample s : samples) {
             latencies.add(s.latency);
@@ -89,10 +116,14 @@ public class AggregateWindow {
             totalRequests += b.totalRequests();
         }
         return AggregatedMetrics.fromSamples(latencies, errorCount, totalRequests,
-                System.currentTimeMillis());
+                now > 0 ? now : System.currentTimeMillis());
     }
 
     public synchronized int currentSampleCount() {
+        long now = determineNow();
+        if (now > 0) {
+            evict(now);
+        }
         return samples.size();
     }
 }

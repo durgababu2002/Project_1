@@ -85,7 +85,7 @@ public class SlaValidatorService {
 
             AggregatedMetrics metrics = aggregateWindow.aggregate();
             // Empty window = no data yet; skip rather than alarm spuriously.
-            if (metrics.getSampleCount() == 0) {
+            if (metrics.getSampleCount() == 0 && metrics.getTotalRequests() == 0) {
                 continue;
             }
 
@@ -100,12 +100,12 @@ public class SlaValidatorService {
 
     /** Returns a human-readable breach reason, or {@code null} if not breached. */
     String evaluate(LoadTest test, AggregatedMetrics metrics) {
-        if (metrics.getP99() > test.getSlaMaxP99Latency()) {
+        if (test.getSlaMaxP99Latency() > 0 && metrics.getP99() > test.getSlaMaxP99Latency()) {
             return String.format("p99 (%.1f ms) exceeded SLA limit (%.1f ms)",
                     metrics.getP99(), test.getSlaMaxP99Latency());
         }
         double errorRatePercent = metrics.getErrorRate() * 100.0;
-        if (errorRatePercent > test.getSlaMaxErrorRate()) {
+        if (test.getSlaMaxErrorRate() > 0 && errorRatePercent > test.getSlaMaxErrorRate()) {
             return String.format("error rate (%.2f%%) exceeded SLA limit (%.2f%%)",
                     errorRatePercent, test.getSlaMaxErrorRate());
         }

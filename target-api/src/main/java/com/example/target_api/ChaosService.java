@@ -119,8 +119,10 @@ public class ChaosService {
             case CPU_SPIKE -> params.put("burnMs", positive(spec.getBurnMs(), 500));
             case MEMORY_SPIKE -> params.put("memoryMb", positive(spec.getMemoryMb(), 200));
             case DB_POOL_EXHAUSTION -> {
-                params.put("poolSize", positive(spec.getPoolSize(), 5));
+                int poolSize = positive(spec.getPoolSize(), 5);
+                params.put("poolSize", poolSize);
                 params.put("queryMs", positive(spec.getQueryMs(), 300));
+                dbPool = new Semaphore(poolSize);
             }
             default -> throw new IllegalArgumentException("Unknown chaos type: " + type);
         }
@@ -224,9 +226,14 @@ public class ChaosService {
 
     private void applyPoolExhaustion(ActiveFault fault) throws InterruptedException {
         Semaphore pool = dbPool;
-        int poolSize = fault.param("poolSize", 5);
-        if (pool == null || pool.availablePermits() > poolSize) {
-            dbPool = pool = new Semaphore(poolSize);
+        if (pool == null) {
+            int poolSize = fault.param("poolSize", 5);
+            synchronized (this) {
+                if (dbPool == null) {
+                    dbPool = new Semaphore(poolSize);
+                }
+                pool = dbPool;
+            }
         }
         // Simulate a connection-pool acquire: no free permit -> 503 starvation.
         if (!pool.tryAcquire()) {
@@ -291,6 +298,7 @@ public class ChaosService {
                 mb = Math.max(mb, f.param("memoryMb", 200));
             }
         }
+        mb = Math.min(mb, 1024); // Cap to 1GB to prevent integer overflow and OOM crash
         synchronized (memoryLock) {
             memoryChunk = new byte[(int) (mb * 1024 * 1024)];
         }

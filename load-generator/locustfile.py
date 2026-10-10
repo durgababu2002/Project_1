@@ -107,11 +107,8 @@ def _publish_stats_loop():
 
 _exporter_started = False
 
-@events.test_start.add_listener
-def on_test_start(environment, **kwargs):
+def _start_exporter_threads():
     global _exporter_started
-    _runner["ref"] = environment.runner
-    
     if not _exporter_started:
         try:
             # start_http_server runs in a background daemon thread (non-blocking)
@@ -122,6 +119,16 @@ def on_test_start(environment, **kwargs):
             _exporter_started = True
         except Exception as e:
             print("Failed to start Prometheus exporter:", e)
+
+@events.init.add_listener
+def on_locust_init(environment, **kwargs):
+    _runner["ref"] = environment.runner
+    _start_exporter_threads()
+
+@events.test_start.add_listener
+def on_test_start(environment, **kwargs):
+    _runner["ref"] = environment.runner
+    _start_exporter_threads()
 
 
 def get_redis():
@@ -137,11 +144,13 @@ def get_redis():
 def on_request(request_type, name, response_time, response_length, response, context, exception, start_time, url, **kwargs):
     status = "success" if exception is None else "failure"
     status_code = 0
-    if exception is None and response is not None:
+    if response is not None:
         try:
-            status_code = getattr(response, 'status_code', 200) or 0
+            status_code = getattr(response, 'status_code', 200 if exception is None else 0) or 0
         except Exception:
             status_code = 0
+    elif exception is not None:
+        status_code = getattr(exception, 'status_code', 0) or 0
 
     method = request_type or "unknown"
 

@@ -64,6 +64,32 @@ class AggregateWindowTest {
         assertThat(m.getErrorRate()).isZero();
     }
 
+    @Test
+    void clearResetsAllSamplesAndBatches() {
+        AggregateWindow window = new AggregateWindow(30_000L);
+        window.addBatch(List.of(100L, 200L), 2, 5, System.currentTimeMillis());
+        assertThat(window.currentSampleCount()).isEqualTo(2);
+
+        window.clear();
+        assertThat(window.currentSampleCount()).isZero();
+        AggregatedMetrics m = window.aggregate();
+        assertThat(m.getSampleCount()).isZero();
+        assertThat(m.getErrorRate()).isZero();
+    }
+
+    @Test
+    void aggregateEvictsExpiredSamplesWithoutNewBatches() throws InterruptedException {
+        // 50ms window
+        AggregateWindow window = new AggregateWindow(50L);
+        window.addBatch(List.of(100L), 0, 1, System.currentTimeMillis());
+        assertThat(window.currentSampleCount()).isEqualTo(1);
+
+        Thread.sleep(70); // wait past the 50ms window
+        AggregatedMetrics m = window.aggregate();
+        assertThat(m.getSampleCount()).isZero();
+        assertThat(window.currentSampleCount()).isZero();
+    }
+
     private List<Long> range(int from, int to) {
         List<Long> out = new ArrayList<>(to - from + 1);
         for (int i = from; i <= to; i++) {
